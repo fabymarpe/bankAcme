@@ -16,4 +16,5 @@ class WorkFlowApi(Resource):
         :return:
         """
         json_file = request.files.get('file')
+        print(json_file)
         return WorkFlowController().process_file(json_file)

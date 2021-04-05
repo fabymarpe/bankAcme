@@ -28,9 +28,8 @@ class WorkFlowController:
         """
         if json_file:
             file_helper = FileHelper()
-            filename = file_helper.save_file()
-            my_file = os.path.join(UPLOAD_FOLDER, filename)
-            workflow_data = file_helper.read_file(my_file)
+            filename = file_helper.save_file(json_file)
+            workflow_data = file_helper.read_file(filename)
             return self.save_workflow(workflow_data)
 
     def save_workflow(self, workflow_data):
