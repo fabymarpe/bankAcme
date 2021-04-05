@@ -1,10 +1,9 @@
 import json
+import requests
+from datetime import datetime
 
 
 class FileHelper:
-
-    def __init__(self):
-        pass
 
     @staticmethod
     def save_file():
