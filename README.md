@@ -8,6 +8,7 @@
 1. From the project folder run _docker-compose up_
 2. From your browser go to http://localhost:5000/ to make sure the service is running
 3. Make a POST call from postman using the following collection:
+
     ```
    {
 	"info": {
