@@ -3,6 +3,7 @@ import os
 from constants import UPLOAD_FOLDER
 from controllers.AccountController import AccountController
 from controllers.StepController import WorkFlowStepController
+from util.exception import InvalidAccount
 from util.fileHelper import FileHelper
 from util.transactionHelper import TransactionHelper
 from util.validatorHelper import ValidatorHelper
@@ -11,8 +12,14 @@ from controllers.UserController import UserController
 from managers.WorkFlowManager import WorkFlowManager
 from managers.WorkFlowStepManager import WorkFlowStepManager
 
+from util import logger
+from util import decorators
+
 
 class WorkFlowController:
+    def __init__(self, log_file_name=''):
+        self.log_file_name = 'workflow'
+        self.logger_obj = logger.get_logger(log_file_name=self.log_file_name)
 
     def process_file(self, json_file):
         """
@@ -24,7 +31,7 @@ class WorkFlowController:
             filename = file_helper.save_file()
             my_file = os.path.join(UPLOAD_FOLDER, filename)
             workflow_data = file_helper.read_file(my_file)
-            self.save_workflow(workflow_data)
+            return self.save_workflow(workflow_data)
 
     def save_workflow(self, workflow_data):
         """
@@ -52,7 +59,7 @@ class WorkFlowController:
         for step in steps:
             step["workflow_id"] = workflow_id
         WorkFlowStepManager().insert_many(steps)
-        self.start_workflow(workflow_id)
+        return self.start_workflow(workflow_id)
 
     def start_workflow(self, workflow_id):
         """
@@ -62,8 +69,9 @@ class WorkFlowController:
         workflow = WorkFlowManager().findById(workflow_id)
         trigger = workflow.get("trigger")
         params = {trigger.get('id'): trigger.get('params')}
-        self.process_steps(workflow_id, trigger, params)
+        return self.process_steps(workflow_id, trigger, params)
 
+    @decorators.log_decorator()
     def process_steps(self, workflow_id, step, result):
         """
         Process each workflow step
@@ -93,64 +101,76 @@ class WorkFlowController:
             }
 
         """
-        print("\nprocess step: {}".format(step.get("id")))
-        print(result)
-        transitions = step.get('transitions')
-        print(transitions)
-        for transition in transitions:
-            next_step = None
-            if self.validate_condition(transition.get('condition', []), result):
-                next_step = WorkFlowStepController().get_workflow_step(
-                    workflow_id=workflow_id,
-                    step_id=transition.get('target'))
-            if next_step:
-                step_parameters = self.get_result_field(next_step.get('params'), result)
-                method_to_call = getattr(self, next_step.get('action'))
-                response = method_to_call(**step_parameters)
-                if response:
-                    result.update(response)
-                self.process_steps(workflow_id, next_step, result)
+        try:
+            self.logger_obj.info("process step: {}".format(step.get("id")))
+            transitions = step.get('transitions')
+            for transition in transitions:
+                next_step = None
+                if self.validate_condition(transition.get('condition', []), result):
+                    next_step = WorkFlowStepController().get_workflow_step(
+                        workflow_id=workflow_id,
+                        step_id=transition.get('target'))
+                if next_step:
+                    step_parameters = self.get_result_field(next_step.get('params'), result)
+                    method_to_call = getattr(self, next_step.get('action'))
+                    response = method_to_call(**step_parameters)
+                    if response:
+                        result.update(response)
+                    self.process_steps(workflow_id, next_step, result)
+            current_balance = result.get("account_balance", {}).get("balance", 0)
+            return {"message": "File processed successful.", "current_balance": current_balance}
+        except Exception as e:
+            raise e
 
-    @staticmethod
-    def validate_account(user_id, pin):
+    @decorators.log_decorator()
+    def validate_account(self, user_id, pin):
         """
         Validates an account
         :param user_id: str, user id. Ie, '105398891'
         :param pin: Int, pin. Ie, 2090
         :return: Dict, response. Ie, {"is_valid": False}
         """
+        self.logger_obj.info("validate account for user: {}".format(user_id))
         response = {"validate_account": {"is_valid": False}}
         if user_id and pin:
             UserController().create_new_user(user_id, pin)
             response["validate_account"]["is_valid"] = True
-        return response
+            return response
+        else:
+            raise InvalidAccount(user_id, pin)
 
-    @staticmethod
-    def withdraw_in_dollars(user_id, money):
+    @decorators.log_decorator()
+    def withdraw_in_dollars(self, user_id, money):
         """
         withdraw from the account in dollars
         :param user_id: str, user id. Ie, '105398891'
         :param money: float, withdraw amount. Ie, 345609
         """
-        witdraw_amount = TransactionHelper().convert_currency(money)
-        AccountController().withdraw(user_id, witdraw_amount)
+        try:
+            withdraw_amount = TransactionHelper().convert_currency(money)
+            self.logger_obj.info("new withdrawal for user_id {}: {}".format(user_id, withdraw_amount))
+            AccountController().withdraw(user_id, withdraw_amount)
+        except Exception as e:
+            raise e
 
-    @staticmethod
-    def deposit_money(user_id, money):
+    @decorators.log_decorator()
+    def deposit_money(self, user_id, money):
         """
         Deposits in the account
         :param user_id: str, user id. Ie, '105398891'
         :param money: float, withdraw amount. Ie, 2000
         """
+        self.logger_obj.info("new deposit for user id {}: {}".format(user_id, money))
         AccountController().deposit(user_id, money)
 
-    @staticmethod
-    def get_account_balance(user_id):
+    @decorators.log_decorator()
+    def get_account_balance(self, user_id):
         """
         Gets account balance
         :param user_id: str, user id. Ie, '105398891'
         """
         account_balance = AccountController().get_account_balance(user_id)
+        self.logger_obj.info("account balance for user {}: {}".format(user_id, account_balance))
         return {"account_balance": {"balance": account_balance.get("balance")}}
 
     @staticmethod
@@ -173,11 +193,7 @@ class WorkFlowController:
 
         is_valid = True
         for cond in condition:
-            print(cond)
             value = result.get(cond['from_id']).get(cond['field_id'])
-            print(cond.get("value"))
-            print(value)
-            print(cond.get("operator"))
             is_valid = is_valid and getattr(ValidatorHelper, cond.get("operator"))(value, cond.get("value"))
         return is_valid
 

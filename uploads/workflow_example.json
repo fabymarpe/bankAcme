@@ -92,7 +92,7 @@
       "id": "withdraw_50",
       "params": {
         "user_id": {"from_id": "start", "param_id": "user_id"},
-        "money": {"from_id": null, "value": 50000}
+        "money": {"from_id": null, "value": 50}
       },
       "action": "withdraw_in_dollars",
       "transitions": [

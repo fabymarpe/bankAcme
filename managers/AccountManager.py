@@ -4,6 +4,7 @@ from database import db
 class AccountManager:
 
     def __init__(self):
+        print(db)
         self.collection = db.account
 
     def insert_one(self, user_id):

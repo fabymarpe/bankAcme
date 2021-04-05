@@ -1,4 +1,5 @@
 from managers.AccountManager import AccountManager
+from util.exception import InsufficientBalance
 
 
 class AccountController:
@@ -39,5 +40,8 @@ class AccountController:
         :return:
         """
         account = self.get_account_balance(user_id)
-        new_balance = account.get("balance") - money
+        balance = account.get("balance")
+        if balance < money:
+            raise InsufficientBalance(user_id, money)
+        new_balance = balance - money
         AccountManager().update({"user_id": user_id}, {"balance": new_balance})
